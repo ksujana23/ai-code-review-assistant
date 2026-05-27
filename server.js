@@ -19,14 +19,15 @@ app.post("/review", async (req, res) => {
   try {
     const { prUrl } = req.body;
 
-    // Extract GitHub details
-    const match = prUrl.match(
-      /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/
-    );
+    // Validate PR URL
+    const prUrlPattern =
+      /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
+
+    const match = prUrl.match(prUrlPattern);
 
     if (!match) {
       return res.status(400).json({
-        error: "Invalid PR URL",
+        error: "Invalid GitHub PR URL",
       });
     }
 
@@ -34,52 +35,52 @@ app.post("/review", async (req, res) => {
     const repo = match[2];
     const pullNumber = match[3];
 
-    // GitHub API URL
-    const githubApiUrl = `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}/files`;
+    console.log("Owner:", owner);
+    console.log("Repo:", repo);
+    console.log("PR Number:", pullNumber);
 
-    // Fetch PR files
-    const githubResponse = await axios.get(githubApiUrl, {
-      headers: {
-        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
-      },
-    });
+    // Fetch PR diff directly
+    const diffResponse = await axios.get(
+      `https://api.github.com/repos/${owner}/${repo}/pulls/${pullNumber}`,
+      {
+        headers: {
+          Authorization: `token ${process.env.GITHUB_TOKEN}`,
+          Accept: "application/vnd.github.v3.diff",
+        },
+      }
+    );
 
-    const files = githubResponse.data;
+    const diff = diffResponse.data;
 
-    let codeChanges = "";
+    // Prevent huge payloads
+    const trimmedDiff = diff.substring(0, 12000);
 
-    files.forEach((file) => {
-      codeChanges += `
-File: ${file.filename}
-
-Patch:
-${file.patch}
-`;
-    });
+    console.log(trimmedDiff.substring(0, 1000));
 
     // AI Prompt
     const prompt = `
-You are a senior software engineer reviewing a pull request.
+You are a senior software engineer reviewing a GitHub pull request.
 
-Analyze this code and provide:
+Analyze this PR diff and provide:
+
 1. Bugs
 2. Improvements
 3. Edge cases
 4. Optimizations
 5. Clean code suggestions
 
-Code:
-${codeChanges}
+PR Diff:
+${trimmedDiff}
 `;
 
-    // OpenRouter AI Request
+    // OpenRouter Request
     const completion = await openai.chat.completions.create({
       model: "openai/gpt-3.5-turbo",
       messages: [
         {
           role: "system",
           content:
-            "You are a senior software engineer reviewing pull requests.",
+            "You are an expert senior software engineer reviewing pull requests.",
         },
         {
           role: "user",
@@ -96,7 +97,9 @@ ${codeChanges}
     });
 
   } catch (error) {
-    console.error(error);
+    console.error(
+      error.response?.data || error.message
+    );
 
     res.status(500).json({
       error: "Something went wrong",
@@ -104,6 +107,10 @@ ${codeChanges}
   }
 });
 
-app.listen(5000, () => {
-  console.log("Server running on port 5000");
+app.get("/", (req, res) => {
+  res.send("AI Code Review Backend Running");
+});
+
+app.listen(process.env.PORT || 5000, () => {
+  console.log("Server running");
 });
