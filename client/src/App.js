@@ -11,7 +11,7 @@ function App() {
       setLoading(true);
 
       const response = await axios.post(
-        "http://localhost:5000/review",
+        "https://ai-code-review-assistant3.onrender.com/review",
         {
           prUrl,
         }
